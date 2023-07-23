@@ -108,5 +108,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = "/static/"
+STATICFILES_DIRS = [
+    BASE_DIR / "static"
+]
 
-AUTH_USER_MODEL = 'pos.User'  
+STATIC_ROOT = "static_root"
+
+AUTH_USER_MODEL = 'pos.User'
+
+LOGIN_REDIRECT_URL = '/home'
+LOGOUT_REDIRECT_URL = '/login'
