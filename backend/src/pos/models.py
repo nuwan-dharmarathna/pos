@@ -1,29 +1,29 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from datetime import date
+from django.utils import timezone
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 
 
 class User(AbstractUser):
-    id = models.AutoField(primary_key=True)  # Custom primary key
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
-    role = models.CharField(max_length=50, choices=[(
-        'cashier', 'Cashier'), ('manager', 'Manager')], default='cashier')
-    is_active = models.BooleanField(default=True)
-    # Add more fields as per your requirements
+    # id = models.AutoField(primary_key=True)  # Custom primary key
+    # phone_number = models.CharField(max_length=15, blank=True, null=True)
+    # address = models.TextField(blank=True, null=True)
+    # role = models.CharField(max_length=50, choices=[(
+    #     'cashier', 'Cashier'), ('manager', 'Manager')], default='cashier')
+    # is_active = models.BooleanField(default=True)
+    # # Add more fields as per your requirements
 
-    class Meta:
-        # Specify a unique related_name for the groups and user_permissions fields
-        # to avoid clashes with the default 'auth.User' model
-        default_related_name = 'pos_%(class)s'
+    # class Meta:
+    #     # Specify a unique related_name for the groups and user_permissions fields
+    #     # to avoid clashes with the default 'auth.User' model
+    #     default_related_name = 'pos_%(class)s'
+    pass
 
 
 class Product_Category(models.Model):
     cat_id = models.AutoField(primary_key=True)
     cat_name = models.CharField(max_length=64, unique=True)
-    description = models.TextField(blank=True, null=True)
     date_updated = models.DateField(auto_now=True)
 
     def __str__(self):
@@ -33,7 +33,6 @@ class Product_Category(models.Model):
 class Product_Unit(models.Model):
     p_id = models.AutoField(primary_key=True)
     p_name = models.CharField(max_length=64)
-    description = models.TextField(blank=True, null=True)
     category = models.ForeignKey(
         Product_Category, on_delete=models.CASCADE, related_name="product_category"
     )
@@ -61,43 +60,39 @@ class Product(models.Model):
         return f"{self.name} : {self.unit_name.p_name} : {self.stock_quantity} : {self.in_stock}"
 
 
-class CustomPrimaryKeyField(models.AutoField):
-    def pre_save(self, model_instance, add):
-        if not model_instance.pk:
-            today = date.today().strftime("%Y%m%d")
-            last_sale = model_instance.__class__.objects.order_by(
-                '-pk').first()
-            if last_sale:
-                last_pk = last_sale.pk
-                sequence_number = int(str(last_pk)[8:]) + 1
-            else:
-                sequence_number = 1
-
-            model_instance.pk = int(f"{today}{sequence_number:03d}")
-
-        return super().pre_save(model_instance, add)
+class CustomPrimaryKey(models.AutoField):
+    def get_db_prep_value(self, value, connection, prepared=False):
+        if value is None:
+            return None
+        return value.strftime('%Y%m%d%H%M%S')
 
 
 class Sale(models.Model):
-    id = CustomPrimaryKeyField(primary_key=True)
     issue_date = models.DateTimeField(auto_now_add=True)
-    cashier = models.ForeignKey(User, on_delete=models.CASCADE, editable=False)
+    cashier = models.ForeignKey(
+        User, on_delete=models.CASCADE, editable=False, related_name="sales")
     customer_name = models.CharField(max_length=100)
     customer_phone_number = models.CharField(
         max_length=15, blank=True, null=True)
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_method = models.CharField(max_length=50, choices=[
-        ('cash', 'Cash'),
-        ('credit_card', 'Credit Card'),
-        ('debit_card', 'Debit Card'),
-        ('mobile_payment', 'Mobile Payment'),
-        ('other', 'Other')
-    ], default='cash')
-    is_completed = models.BooleanField(default=False)
-    _request = None
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            current_date = timezone.now()
+            last_sale = Sale.objects.filter(
+                id__contains=current_date.strftime('%Y%m%d')
+            ).order_by('-id').first()
+
+            if last_sale:
+                last_id = last_sale.id[8:]
+                new_id = int(last_id) + 1
+            else:
+                new_id = 1
+
+            self.id = f"{current_date.strftime('%Y%m%d')}{new_id:04d}"
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.id} : {self.issue_date} : {self.cashier} : {self.is_completed}'
+        return f'{self.id} : {self.customer_name}'
 
 
 @receiver(pre_save, sender=Sale)
@@ -117,7 +112,7 @@ class SaleItem(models.Model):
 @receiver(pre_save, sender=SaleItem)
 def update_unit_price_and_subtotal(sender, instance, **kwargs):
     # Calculate the unit_price based on the selected product
-    instance.unit_price_at_sale = instance.product.price
+    instance.unit_price_at_sale = instance.product.retail_price
 
     # Calculate the subtotal based on the quantity and unit_price
     instance.subtotal = instance.quantity * instance.unit_price_at_sale

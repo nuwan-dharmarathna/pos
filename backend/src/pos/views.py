@@ -7,11 +7,11 @@ from . import forms
 
 # Create your views here.
 class CategoryPageView(TemplateView):
-    template_name = "category.html"
+    template_name = "pos/category/category.html"
 
 
 class CategoryListView(ListView):
-    template_name = "category-list.html"
+    template_name = "pos/category/category-list.html"
     queryset = models.Product_Category.objects.all()
     context_object_name = "categories"
 
